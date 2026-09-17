@@ -37,15 +37,24 @@ OS user runs these scripts — `analyzer.py` shells out to it and explicitly str
 `ANTHROPIC_API_KEY` from the subprocess environment so the subscription session is used
 instead of metered API billing (see below).
 
-Deploy uses the systemd units in `deploy/` (one long-running service for `bot.py`, three
-oneshot service+timer pairs for the daily/weekly/monthly scripts) — see README.md for the
-`systemctl` commands. The unit files hardcode the VPS path
+Deploy uses the systemd units in `deploy/` (one long-running service for `bot.py`, four
+oneshot service+timer pairs for the daily/weekly/monthly/yearly scripts) — see
+README.md for the `systemctl` commands. The unit files hardcode the VPS path
 (`/home/amal/progetti/Alfred-Report`), which is deliberately different from wherever you
 develop locally — no code hardcodes a filesystem path anywhere (`config.py`/`db.py`
 resolve `DB_PATH`/`LOG_PATH`/`TELETHON_SESSION_PATH` relative to `.env` or the module's
 own directory), so cloning the repo to a different absolute path never breaks anything
 as long as the unit files' `WorkingDirectory`/`EnvironmentFile`/`ExecStart` match where
 it actually lives.
+
+**Every unit file also sets `Environment=PATH=...` explicitly**, including the VPS's
+nvm-managed Node bin directory (`/home/amal/.nvm/versions/node/v24.19.0/bin`) ahead of
+the standard system paths. This is required, not cosmetic: `claude` (the CLI
+`analyzer.py` shells out to) was installed via `npm install -g` under nvm, so it lives
+outside systemd's default minimal `PATH` — without this, every `subprocess.run(["claude",
+...])` call would fail with "command not found" the moment a job runs unattended. If
+Node is ever upgraded via `nvm install`, this path needs updating in all five `.service`
+files to match the new version directory (`nvm current` on the VPS shows the active one).
 
 ## Architecture
 
