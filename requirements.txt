@@ -1,0 +1,6 @@
+python-telegram-bot>=21.0
+telethon>=1.36
+python-dotenv>=1.0
+requests>=2.31
+markdown>=3.6
+xhtml2pdf>=0.2.16

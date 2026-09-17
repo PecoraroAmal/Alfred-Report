@@ -1,0 +1,15 @@
+.env
+*.session
+*.session-journal
+*.db
+*.log
+report_*.txt
+report_*.pdf
+riepilogo_*.pdf
+prompt_esempio.txt
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+vps-netcup-scheda-tecnica.txt

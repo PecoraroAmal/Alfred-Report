@@ -1,0 +1,9 @@
+[Unit]
+Description=Timer report giornaliero Finance Digest Bot (parte alle 5:00, invio alle 6:00 Europe/Berlin)
+
+[Timer]
+OnCalendar=*-*-* 05:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

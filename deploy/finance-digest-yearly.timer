@@ -1,0 +1,9 @@
+[Unit]
+Description=Timer riepilogo annuale Finance Digest Bot (1° gennaio, 00:00)
+
+[Timer]
+OnCalendar=*-01-01 00:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

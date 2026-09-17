@@ -1,0 +1,10 @@
+[Unit]
+Description=Finance Digest Bot - report giornaliero
+
+[Service]
+Type=oneshot
+TimeoutStartSec=infinity
+User=amal
+WorkingDirectory=/home/amal/progetti/Alfred-Report
+EnvironmentFile=/home/amal/progetti/Alfred-Report/.env
+ExecStart=/home/amal/progetti/Alfred-Report/.venv/bin/python main.py
