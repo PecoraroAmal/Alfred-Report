@@ -5,7 +5,7 @@ immagini vengono ignorati (mai scaricati), i link YouTube vengono ignorati
 leggerli da solo con url_context."""
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 from telethon import TelegramClient, errors
 
@@ -47,61 +47,85 @@ def normalizza_canale(testo: str) -> str:
     return "@" + testo.lstrip("@")
 
 
-async def raccogli_messaggi() -> dict[str, list[tuple[str, str, str | None]]]:
-    """Ritorna {canale: [(ora "HH:MM", testo, url_o_None), ...]}.
-    Se un canale non è più accessibile viene rimosso da db.canali e notificato.
-    Se la connessione cade a metà, ritorna quanto raccolto finora e notifica."""
+async def _raccogli_intervallo(
+    client: TelegramClient, da: datetime, a: datetime | None
+) -> dict[str, list[tuple[str, str, str | None]]]:
+    """Raccoglie i messaggi testuali di ogni canale nell'intervallo [da, a)
+    (a=None significa "fino ad ora"). `offset_date=a` fa partire l'iterazione di
+    Telethon dai messaggi immediatamente precedenti a quella data (comportamento
+    nativo di iter_messages, che va sempre dal più recente al più vecchio); ci si
+    ferma manualmente quando si supera `da`. Se un canale non è più accessibile
+    viene rimosso da db.canali e notificato. Se la connessione cade a metà,
+    ritorna quanto raccolto finora e notifica."""
     risultato: dict[str, list[tuple[str, str, str | None]]] = {}
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    for canale in db.lista_canali():
+        try:
+            entity = await client.get_entity(canale)
+        except (
+            errors.UsernameNotOccupiedError,
+            errors.UsernameInvalidError,
+            errors.ChannelPrivateError,
+            ValueError,
+        ):
+            db.rimuovi_canale(canale)
+            notifica_owner(
+                f"⚠️ Canale {canale} non più accessibile: rimosso automaticamente dalla lista."
+            )
+            log.warning("Canale rimosso (non accessibile): %s", canale)
+            continue
+        except Exception:
+            log.exception("Raccolta interrotta durante il canale %s", canale)
+            notifica_owner(
+                f"⚠️ Connessione interrotta durante la lettura di {canale}: "
+                "procedo con i canali già raccolti."
+            )
+            return risultato
 
+        messaggi = []
+        try:
+            async for msg in client.iter_messages(entity, offset_date=a):
+                if msg.date < da:
+                    break
+                if msg.voice or msg.audio or not msg.text:
+                    continue
+                testo = _rimuovi_firma_canale(msg.text, canale)
+                if not testo:
+                    continue
+                ora = msg.date.astimezone(FUSO_ITALIA).strftime("%H:%M")
+                url = url_non_youtube(testo)
+                messaggi.append((ora, testo, url))
+        except Exception:
+            log.exception("Errore durante la lettura dei messaggi di %s", canale)
+            notifica_owner(
+                f"⚠️ Errore durante la lettura di {canale}: canale saltato per oggi."
+            )
+            continue
+
+        if messaggi:
+            risultato[canale] = list(reversed(messaggi))
+
+    return risultato
+
+
+async def raccogli_messaggi() -> dict[str, list[tuple[str, str, str | None]]]:
+    """Finestra mobile delle ultime 24h (digest giornaliero automatico e
+    `/report` on-demand). Ritorna {canale: [(ora "HH:MM", testo, url_o_None), ...]}."""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     client = TelegramClient(
         config.TELETHON_SESSION_PATH, config.TELEGRAM_API_ID, config.TELEGRAM_API_HASH
     )
     async with client:
-        for canale in db.lista_canali():
-            try:
-                entity = await client.get_entity(canale)
-            except (
-                errors.UsernameNotOccupiedError,
-                errors.UsernameInvalidError,
-                errors.ChannelPrivateError,
-                ValueError,
-            ):
-                db.rimuovi_canale(canale)
-                notifica_owner(
-                    f"⚠️ Canale {canale} non più accessibile: rimosso automaticamente dalla lista."
-                )
-                log.warning("Canale rimosso (non accessibile): %s", canale)
-                continue
-            except Exception:
-                log.exception("Raccolta interrotta durante il canale %s", canale)
-                notifica_owner(
-                    f"⚠️ Connessione interrotta durante la lettura di {canale}: "
-                    "procedo con i canali già raccolti."
-                )
-                return risultato
+        return await _raccogli_intervallo(client, da=cutoff, a=None)
 
-            messaggi = []
-            try:
-                async for msg in client.iter_messages(entity):
-                    if msg.date < cutoff:
-                        break
-                    if msg.voice or msg.audio or not msg.text:
-                        continue
-                    testo = _rimuovi_firma_canale(msg.text, canale)
-                    if not testo:
-                        continue
-                    ora = msg.date.astimezone(FUSO_ITALIA).strftime("%H:%M")
-                    url = url_non_youtube(testo)
-                    messaggi.append((ora, testo, url))
-            except Exception:
-                log.exception("Errore durante la lettura dei messaggi di %s", canale)
-                notifica_owner(
-                    f"⚠️ Errore durante la lettura di {canale}: canale saltato per oggi."
-                )
-                continue
 
-            if messaggi:
-                risultato[canale] = list(reversed(messaggi))
-
-    return risultato
+async def raccogli_messaggi_giorno(giorno: date) -> dict[str, list[tuple[str, str, str | None]]]:
+    """Solo i messaggi del giorno solare indicato, 00:00-23:59:59 ora italiana
+    (usata da `/report_ieri`) — a differenza della finestra mobile di sopra, ha
+    sia un limite inferiore sia uno superiore."""
+    inizio = datetime.combine(giorno, time.min, tzinfo=FUSO_ITALIA)
+    fine = inizio + timedelta(days=1)
+    client = TelegramClient(
+        config.TELETHON_SESSION_PATH, config.TELEGRAM_API_ID, config.TELEGRAM_API_HASH
+    )
+    async with client:
+        return await _raccogli_intervallo(client, da=inizio, a=fine)

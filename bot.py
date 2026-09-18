@@ -4,6 +4,8 @@ chiunque altro viene ignorato del tutto, nessuna risposta."""
 
 import asyncio
 import re
+import subprocess
+import sys
 from functools import wraps
 
 from telegram import BotCommand, Update
@@ -20,7 +22,17 @@ log = get_logger("bot")
 LIMITE_MESSAGGIO = 4000  # margine sotto i 4096 caratteri di Telegram
 
 COMANDI = [
+    (
+        "report",
+        "Genera subito il report di oggi: raccoglie i messaggi delle ultime 24h dai "
+        "canali monitorati e te lo invia in PDF, senza aspettare le 6:00",
+    ),
     ("aggiungi", "Aggiungi un canale da monitorare: /aggiungi @canale (o incolla il link t.me/...)"),
+    (
+        "report_ieri",
+        "Genera il report dei messaggi di ieri (00:00-23:59): utile se il digest "
+        "automatico non è partito quel giorno",
+    ),
     ("rimuovi", "Rimuovi un canale monitorato: /rimuovi @canale (o incolla il link t.me/...)"),
     ("lista", "Mostra l'elenco dei canali attualmente monitorati"),
     (
@@ -80,6 +92,44 @@ def solo_owner(handler):
         return await handler(update, context)
 
     return wrapper
+
+
+async def _lancia_report(update: Update, *flag_extra: str, messaggio_attesa: str):
+    """Lancia main.py come sottoprocesso separato invece di chiamare collector.py
+    direttamente qui: bot.py non deve mai aprire una sessione Telethon in-process
+    (solo main.py la tocca, per non entrare in conflitto con quella del job
+    schedulato). --immediato salta l'attesa fino alle 6:00: sono comandi on-demand,
+    l'utente li lancia quando vuole il report subito."""
+    stato = await update.message.reply_text(messaggio_attesa)
+    argomenti = ["--immediato", *flag_extra]
+    risultato = await asyncio.to_thread(
+        subprocess.run,
+        [sys.executable, "main.py", *argomenti],
+        capture_output=True,
+        text=True,
+    )
+    if risultato.returncode == 0:
+        await stato.edit_text("✅ Report generato e inviato.")
+    else:
+        log.error("Sottoprocesso 'main.py %s' fallito: %s", " ".join(argomenti), risultato.stderr[-2000:])
+        await stato.edit_text("❌ Qualcosa è andato storto, controlla i log sulla VPS.")
+
+
+@solo_owner
+async def report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await _lancia_report(
+        update,
+        messaggio_attesa="⏳ Raccolgo i messaggi di oggi e avvio l'analisi, può richiedere qualche minuto...",
+    )
+
+
+@solo_owner
+async def report_ieri(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await _lancia_report(
+        update,
+        "--ieri",
+        messaggio_attesa="⏳ Raccolgo i messaggi di ieri e avvio l'analisi, può richiedere qualche minuto...",
+    )
 
 
 @solo_owner
@@ -191,7 +241,9 @@ def main():
     db.init_db()
     app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).post_init(_registra_menu_comandi).build()
 
+    app.add_handler(CommandHandler("report", report))
     app.add_handler(CommandHandler("aggiungi", aggiungi))
+    app.add_handler(CommandHandler("report_ieri", report_ieri))
     app.add_handler(CommandHandler("rimuovi", rimuovi))
     app.add_handler(CommandHandler("lista", lista))
     app.add_handler(CommandHandler("scarta", scarta))

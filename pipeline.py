@@ -21,6 +21,7 @@ def genera_e_invia(
     didascalia: str,
     ora_invio: str = "06:00",
     giorno_dopo: bool = False,
+    attendi: bool = True,
 ) -> None:
     try:
         report = chiama_analyzer()
@@ -33,6 +34,7 @@ def genera_e_invia(
     with open(nome_file, "wb") as f:
         f.write(pdf_report.genera_pdf(report, titolo=titolo_pdf))
 
-    attendi_fino_alle(ora_invio, giorno_dopo=giorno_dopo)
+    if attendi:
+        attendi_fino_alle(ora_invio, giorno_dopo=giorno_dopo)
     invia_documento(nome_file, didascalia=didascalia)
     log.info("%s inviato correttamente", etichetta)
