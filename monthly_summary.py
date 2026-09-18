@@ -2,6 +2,7 @@
 riepiloghi settimanali del mese appena chiuso (salvato subito), poi aspetta
 le 6:00 del mattino per l'invio effettivo del PDF."""
 
+import sys
 from datetime import datetime, timedelta
 
 import analyzer
@@ -12,7 +13,7 @@ from notifiche import FUSO_ITALIA, get_logger
 log = get_logger("monthly_summary")
 
 
-def main():
+def main() -> bool:
     db.init_db()
     oggi = datetime.now(FUSO_ITALIA)
     mese_chiuso = (oggi.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
@@ -20,13 +21,13 @@ def main():
     righe = db.report_settimanali_mese(mese_chiuso)
     if not righe:
         log.info("Nessun riepilogo settimanale da comprimere per %s", mese_chiuso)
-        return
+        return False
 
     testo_input = "\n\n".join(
         f"### Riepilogo settimana conclusa il {r['settimana_fine']}\n{r['testo']}" for r in righe
     )
 
-    pipeline.genera_e_invia(
+    return pipeline.genera_e_invia(
         etichetta=f"Riepilogo mensile di {mese_chiuso}",
         chiama_analyzer=lambda: analyzer.genera_riepilogo(testo_input, effort="high"),
         salva_db=lambda riepilogo: db.salva_report_mensile(mese_chiuso, riepilogo),
@@ -38,4 +39,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(0 if main() else 1)

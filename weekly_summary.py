@@ -3,6 +3,7 @@ giornalieri dell'ultima settimana in un unico riepilogo (salvato subito, per
 la continuità del digest di lunedì), poi aspetta le 6:00 del mattino
 successivo per l'invio effettivo del PDF."""
 
+import sys
 from datetime import datetime, timedelta
 
 import analyzer
@@ -13,12 +14,12 @@ from notifiche import FUSO_ITALIA, get_logger
 log = get_logger("weekly_summary")
 
 
-def main():
+def main() -> bool:
     db.init_db()
     righe = db.report_ultimi_n_giorni(7)
     if not righe:
         log.info("Nessun report giornaliero da riassumere questa settimana")
-        return
+        return False
 
     testo_input = "\n\n".join(f"### Report del {r['data']}\n{r['testo']}" for r in reversed(righe))
 
@@ -26,7 +27,7 @@ def main():
     settimana_fine = oggi.strftime("%Y-%m-%d")
     domani = oggi + timedelta(days=1)
 
-    pipeline.genera_e_invia(
+    return pipeline.genera_e_invia(
         etichetta=f"Riepilogo settimanale (fine {settimana_fine})",
         chiama_analyzer=lambda: analyzer.genera_riepilogo(testo_input, effort="high"),
         salva_db=lambda riepilogo: db.salva_report_settimanale(settimana_fine, riepilogo),
@@ -38,4 +39,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(0 if main() else 1)

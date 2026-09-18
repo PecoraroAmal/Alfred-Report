@@ -22,12 +22,17 @@ def genera_e_invia(
     ora_invio: str = "06:00",
     giorno_dopo: bool = False,
     attendi: bool = True,
-) -> None:
+) -> bool:
+    """Ritorna True solo se il report è stato davvero generato e inviato —
+    False se saltato (Claude Code non disponibile). I chiamanti CLI (main.py
+    e affini) usano questo valore per uscire con un codice diverso da 0 sui
+    salti, così un sottoprocesso (es. lanciato da bot.py per /report) non
+    dichiara falsamente successo quando in realtà non ha inviato nulla."""
     try:
         report = chiama_analyzer()
     except analyzer.AnalisiFallitaError:
         log.error("%s saltato: Claude Code non disponibile", etichetta)
-        return
+        return False
 
     salva_db(report)
 
@@ -38,3 +43,4 @@ def genera_e_invia(
         attendi_fino_alle(ora_invio, giorno_dopo=giorno_dopo)
     invia_documento(nome_file, didascalia=didascalia)
     log.info("%s inviato correttamente", etichetta)
+    return True

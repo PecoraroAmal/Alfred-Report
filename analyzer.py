@@ -146,7 +146,9 @@ ProgressCallback = Optional[Callable[[str], None]]
 
 CLAUDE_MODEL = "claude-sonnet-5"
 _TIMEOUT_PER_EFFORT = {"low": 180}
-_TIMEOUT_DEFAULT = 600  # medium/high/xhigh/max: digest e riepiloghi, più ricerche web
+_TIMEOUT_DEFAULT = 1800  # medium/high/xhigh/max: digest/riepiloghi/report on-demand,
+# con WebSearch/WebFetch su molti canali — 600s si sono rivelati troppo pochi in un
+# test reale con /report_ieri su più canali (timeout raggiunto a metà analisi)
 
 
 def _fmt(n: Optional[int]) -> str:

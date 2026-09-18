@@ -111,6 +111,10 @@ async def _lancia_report(update: Update, *flag_extra: str, messaggio_attesa: str
     if risultato.returncode == 0:
         await stato.edit_text("✅ Report generato e inviato.")
     else:
+        # returncode != 0 copre sia gli "stop" puliti di main.py (nessun messaggio
+        # raccolto, o Claude Code non disponibile/in timeout — in entrambi i casi
+        # arriva già una notifica separata via notifica_owner) sia un vero crash
+        # imprevisto: qui non dichiariamo mai un falso successo.
         log.error("Sottoprocesso 'main.py %s' fallito: %s", " ".join(argomenti), risultato.stderr[-2000:])
         await stato.edit_text("❌ Qualcosa è andato storto, controlla i log sulla VPS.")
 

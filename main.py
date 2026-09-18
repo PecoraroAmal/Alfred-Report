@@ -33,7 +33,13 @@ def _contesto_continuita(giorno: datetime) -> str:
     return "Report dei giorni precedenti (per continuità):\n\n" + "\n\n".join(parti)
 
 
-def main():
+def main() -> bool:
+    """Ritorna True solo se un report è stato davvero generato e inviato —
+    False se saltato (nessun messaggio, o Claude Code non disponibile/in
+    timeout). Usato da __main__ per uscire con un codice diverso da 0 sui
+    salti: bot.py lancia questo script come sottoprocesso per /report e
+    /report_ieri e si fida del codice di uscita per sapere se dire davvero
+    "inviato" all'utente."""
     db.init_db()
     immediato = "--immediato" in sys.argv  # /report, /report_ieri: niente attesa fino alle 6:00
     ieri = "--ieri" in sys.argv  # /report_ieri: solo il giorno solare precedente
@@ -51,7 +57,7 @@ def main():
             f"ℹ️ Nessun messaggio raccolto per il {giorno_target.strftime('%d/%m/%Y')}, "
             "nessun report generato."
         )
-        return
+        return False
 
     voci = [
         (f"{canale} delle ore {ora}" + (f" (fonte: {url})" if url else ""), testo)
@@ -61,7 +67,7 @@ def main():
     contesto = _contesto_continuita(giorno_target)
     data_str = giorno_target.strftime("%Y-%m-%d")
 
-    pipeline.genera_e_invia(
+    return pipeline.genera_e_invia(
         etichetta=f"Report del {data_str}",
         chiama_analyzer=lambda: analyzer.genera_report_con_ricerca(voci, contesto=contesto, effort="high"),
         salva_db=lambda report: db.salva_report_giornaliero(data_str, report),
@@ -73,4 +79,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(0 if main() else 1)
